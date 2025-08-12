@@ -15,7 +15,6 @@
 // #define MOSI_PIN 23
 
 // nRF24
-#define LED_PIN       2
 #define NRF_CE_PIN    26
 #define NRF_CSN_PIN   5
 
