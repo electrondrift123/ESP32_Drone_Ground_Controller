@@ -31,15 +31,19 @@ bool freeRTOS_tasks_init(void){
 
 void txTask(void* pvParams) {
   const TickType_t sendInterval = pdMS_TO_TICKS(50); // Send every 20ms (~50Hz)
-  char payload[] = "yo";  // Example payload, max 32 bytes
 
   vTaskDelay(pdMS_TO_TICKS(1000));
   Serial.println("TX task start!");
 
   bool connected = 1;
+  int16_t load[5] = {0, 0, 0, 0, 0}; // +- 300.00 max
 
   while (1) {
-    bool ok = radio.writeFast(&payload, strlen(payload));
+    // char payload[] = "yo";  // Example payload, max 32 bytes
+    // bool ok = radio.writeFast(&payload, strlen(payload));
+
+    bool ok = radio.writeFast(load, sizeof(load));
+
     
     if (!ok) {
       Serial.println("[TX] FIFO full or failed to write");
@@ -59,8 +63,8 @@ void txTask(void* pvParams) {
         xSemaphoreGive(serialMutex);
       }
 
-      // connected = (bool) telemetry[4];
-    }
+      connected = (bool) telemetry[4];
+    }else connected = false;
 
     digitalWrite(LED_PIN, !digitalRead(LED_PIN));
     vTaskDelay(sendInterval);
