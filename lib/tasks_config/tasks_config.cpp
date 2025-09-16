@@ -8,7 +8,11 @@
 #include <SPI.h>
 #include "RF24.h"
 
+#include "WDT.h"  // WDT library for ESP32
+#include "shared_data.h"
+
 void txTask(void* Parameters);
+void wdtTask(void* Parameters);
 
 BaseType_t taskResult;
 bool freeRTOS_tasks_init(void){
@@ -39,11 +43,7 @@ void txTask(void* pvParams) {
   int16_t load[5] = {0, 0, 0, 0, 0}; // +- 300.00 max
 
   while (1) {
-    // char payload[] = "yo";  // Example payload, max 32 bytes
-    // bool ok = radio.writeFast(&payload, strlen(payload));
-
     bool ok = radio.writeFast(load, sizeof(load));
-
     
     if (!ok) {
       Serial.println("[TX] FIFO full or failed to write");
@@ -66,7 +66,24 @@ void txTask(void* pvParams) {
       connected = (bool) telemetry[4];
     }else connected = false;
 
+    WDT_setSafe(connected); // update wdt
+
     digitalWrite(LED_PIN, !digitalRead(LED_PIN));
     vTaskDelay(sendInterval);
   }
 }
+
+void wdtTask(void* Parameters){
+  const TickType_t refresh_interval = pdMS_TO_TICKS(500); 
+
+  bool local_connected = true;
+
+  for (;;){
+    if (WDT_isSafe()){
+      esp_task_wdt_reset(); // refresh
+    }
+
+    vTaskDelay(refresh_interval);
+  }
+}
+
