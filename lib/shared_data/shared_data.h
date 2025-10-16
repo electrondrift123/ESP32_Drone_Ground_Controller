@@ -4,5 +4,6 @@
 #include <Arduino.h>
 
 extern volatile bool SAFE_WDT;
+extern volatile bool kill_motor_state;
 
 #endif

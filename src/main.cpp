@@ -30,10 +30,6 @@ void setup() {
   }
   Serial.println("main tx init success!");
 
-  // WDT init
-  WDT_init();
-  Serial.println("Watchdog initialized!");
-
   if (!freeRTOS_tasks_init()){
     Serial.println("Failed to create freeRTOS tasks");
     while(1); // halt or retry

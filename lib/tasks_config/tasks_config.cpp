@@ -30,17 +30,33 @@ bool freeRTOS_tasks_init(void){
     return false;
   }
 
+  taskResult = xTaskCreatePinnedToCore(
+    wdtTask,
+    "WDTTask",
+    2048,
+    NULL,
+    1,
+    NULL,
+    0
+  );
+  if (taskResult != pdPASS){
+    Serial.println("WDT task failed to create");
+    return false;
+  }
+
   return true;
 }
 
 void txTask(void* pvParams) {
   const TickType_t sendInterval = pdMS_TO_TICKS(50); // Send every 20ms (~50Hz)
 
-  vTaskDelay(pdMS_TO_TICKS(1000));
+  vTaskDelay(pdMS_TO_TICKS(100));
   Serial.println("TX task start!");
 
   bool connected = 1;
-  int16_t load[5] = {0, 0, 0, 0, 0}; // +- 300.00 max
+  int16_t load[5] = {1, 1, 0, 0, 0}; // +- 300.00 max
+
+  uint16_t counter = 0;
 
   while (1) {
     bool ok = radio.writeFast(load, sizeof(load));
@@ -66,7 +82,12 @@ void txTask(void* pvParams) {
       connected = (bool) telemetry[4];
     }else connected = false;
 
-    WDT_setSafe(connected); // update wdt
+    counter++;
+
+    if (counter >= 10){ // every 0.5 seconds
+      counter = 0;
+      WDT_setSafe(connected); // update wdt
+    }
 
     digitalWrite(LED_PIN, !digitalRead(LED_PIN));
     vTaskDelay(sendInterval);
@@ -76,13 +97,14 @@ void txTask(void* pvParams) {
 void wdtTask(void* Parameters){
   const TickType_t refresh_interval = pdMS_TO_TICKS(500); 
 
-  bool local_connected = true;
+  // WDT init
+  WDT_init();
+  Serial.println("Watchdog initialized!");
 
   for (;;){
     if (WDT_isSafe()){
       esp_task_wdt_reset(); // refresh
     }
-
     vTaskDelay(refresh_interval);
   }
 }

@@ -6,7 +6,9 @@
 #define LED_PIN 2
 
 // define PINs for ADC
-
+#define READ_ADC 33
+#define SW_PIN 32
+#define KILL_LED_PIN 4
 // for Flags
 
 // VSPI

@@ -5,6 +5,7 @@
 
 extern SemaphoreHandle_t serialMutex;
 // extern SemaphoreHandle_t wdtMutex;
+extern SemaphoreHandle_t adcMutex;
 
 // Define and initialize the spinlock
 extern portMUX_TYPE wdtMutex;
