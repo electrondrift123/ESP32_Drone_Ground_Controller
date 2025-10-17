@@ -16,17 +16,17 @@ float safeAnalogRead(int pin) {
 }
 
 void led_pin_init(void){
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
 
-    pinMode(KILL_LED_PIN, OUTPUT);
-    digitalWrite(KILL_LED_PIN, LOW);
+  pinMode(KILL_LED_PIN, OUTPUT);
+  digitalWrite(KILL_LED_PIN, LOW);
 
-    pinMode(SW_PIN, INPUT_PULLDOWN);
-    attachInterrupt(digitalPinToInterrupt(SW_PIN), handleKillButton, RISING);
+  pinMode(SW_PIN, INPUT_PULLDOWN);
+  attachInterrupt(digitalPinToInterrupt(SW_PIN), handleKillButton, RISING);
 
-    pinMode(READ_ADC, INPUT);
-    analogReadResolution(12); // Set ADC resolution to 12 bits
+  pinMode(READ_ADC, INPUT);
+  analogReadResolution(12); // Set ADC resolution to 12 bits -> 4095 max
 }
 
 void pin_config_init(void){
