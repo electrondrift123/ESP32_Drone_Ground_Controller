@@ -81,13 +81,14 @@ void read_analog(void* parameters){
 }
 
 void txTask(void* pvParams) {
-  const TickType_t sendInterval = pdMS_TO_TICKS(50); // Send every 20ms (~50Hz)
+  // period that works: 100ms, 50ms, 
+  const TickType_t sendInterval = pdMS_TO_TICKS(20); // Send every 20ms - to be tested
   TickType_t lastWakeTime = xTaskGetTickCount();
 
   vTaskDelay(pdMS_TO_TICKS(100));
   Serial.println("TX task start!");
 
-  bool connected = 1;
+  bool connected = false;
   int16_t load_local[5] = {100, 100, 0, 0, 0}; // +- 300.00 max res, x100
 
   uint16_t counter = 0;
@@ -103,19 +104,23 @@ void txTask(void* pvParams) {
       xSemaphoreGive(loadMutex);
     }
 
-    bool ok = radio.writeFast(load_local, sizeof(load_local));
+    bool ok = radio.writeFast(load_local, sizeof(load_local)); // works on 80ms, no txstandby
+    // bool ok = radio.write(load_local, sizeof(load_local));
     
     if (!ok) {
       Serial.println("[TX] FIFO full or failed to write");
       radio.flush_tx(); // Clear if overflowed
-    }else {
-      radio.txStandBy();  // this is the fix that ensures TX completes
+    }
+    else {
+      bool sent = radio.txStandBy(100);  // this is the fix that ensures TX completes
+      if (!sent) Serial.println("[TX] txStandBy TIMEOUT");
     }
 
-    int16_t telemetry[5];
 
-    if (radio.isAckPayloadAvailable()) {
+    while (radio.isAckPayloadAvailable()) {
+      int16_t telemetry[5];
       radio.read(&telemetry, sizeof(telemetry));
+
       if (xSemaphoreTake(serialMutex, portMAX_DELAY)) {
         Serial.printf("[ACK] roll: %d, pitch: %d, yaw: %d, alt: %d, Connection: %d\n",
                     telemetry[0], telemetry[1], telemetry[2],
@@ -124,7 +129,8 @@ void txTask(void* pvParams) {
       }
 
       connected = (bool) telemetry[4];
-    }else connected = false;
+    }
+    // else connected = false;
 
     counter++;
 
