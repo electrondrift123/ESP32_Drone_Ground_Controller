@@ -6,6 +6,8 @@
 #include "main_tx.h"
 
 #include "sync.h"
+#include "shared_data.h"
+#include "oled.h"
 
 void setup() {
   // put your setup code here, to run once:
@@ -20,6 +22,7 @@ void setup() {
 
   pin_config_init();
   Serial.println("pin config init success!");
+  oled_init();
   if (!mutexes_init()){
     Serial.println("mutexes init failed");
     while(1);
