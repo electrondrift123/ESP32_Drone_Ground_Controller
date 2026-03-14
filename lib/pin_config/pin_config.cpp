@@ -38,13 +38,16 @@ void led_pin_init(void){
   pinMode(KILL_LED_PIN, OUTPUT);
   digitalWrite(KILL_LED_PIN, LOW);
 
-  pinMode(KILL_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(KILL_PIN), handleKillButton, RISING);
-  pinMode(E_LAND_PIN, INPUT_PULLUP);
+  pinMode(RADIO_LED_PIN, OUTPUT);
+  digitalWrite(RADIO_LED_PIN, LOW);
+
+  pinMode(KILL_PIN, INPUT_PULLDOWN);
+  attachInterrupt(digitalPinToInterrupt(KILL_PIN), handleKillButton, FALLING);
+  pinMode(E_LAND_PIN, INPUT_PULLDOWN);
   attachInterrupt(digitalPinToInterrupt(E_LAND_PIN), handleELandButton, RISING);
-  pinMode(ALT_HOLD_PIN, INPUT_PULLUP);
+  pinMode(ALT_HOLD_PIN, INPUT_PULLDOWN);
   attachInterrupt(digitalPinToInterrupt(ALT_HOLD_PIN), handleAltHoldButton, RISING);
-  pinMode(PID_MODE_PIN, INPUT_PULLUP);
+  pinMode(PID_MODE_PIN, INPUT_PULLDOWN);
   attachInterrupt(digitalPinToInterrupt(PID_MODE_PIN), handlePIDModeButton, RISING);
   pinMode(SW_L_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(SW_L_PIN), handleLeftSwitch, RISING);
@@ -59,7 +62,7 @@ void led_pin_init(void){
   analogReadResolution(12); // Set ADC resolution to 12 bits -> 4095 max
 
   // Take 40–60 samples and average them (reduces noise a lot)
-  const int SAMPLES = 50;
+  const int SAMPLES = 100;
   long sum_r = 0, sum_p = 0, sum_y = 0, sum_t = 0;
 
   for (int i = 0; i < SAMPLES; i++) {

@@ -7,6 +7,6 @@
 
 float float_constraint(float value, float min, float max);
 
-float getBiasedValue(float raw, float center, float deadzone, float max_value);
+float getBiasedValue(float raw, float center, float deadzone, float max_value, float power);
 
 #endif // HELPER_FUNCTIONS_H

@@ -6,7 +6,7 @@ float float_constraint(float value, float min, float max) {
     return value;
 }
 
-float getBiasedValue(float raw, float center, float deadzone, float max_value) {
+float getBiasedValue(float raw, float center, float deadzone, float max_value, float power) {
   // 1. Check if inside deadzone
   if (abs(raw - center) < deadzone) return 0.0f;
 
@@ -21,7 +21,7 @@ float getBiasedValue(float raw, float center, float deadzone, float max_value) {
   }
 
   // 3. Apply your "Heavy Bias" (Exponential Scaling)
-  float biased = pow(abs(normalized), 3.0); 
+  float biased = pow(abs(normalized), power); 
   if (normalized < 0) biased *= -1;
 
   return biased * 100; // Scale to 0-100 range

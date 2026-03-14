@@ -137,46 +137,53 @@ void read_analog(void* parameters){
     local_R = safeAnalogRead(R_PIN); // Read R-axis
 
     // ADC read 12 bit res
-    local_T = getBiasedValue(local_T, center_throttle, DEADZONE, MAX);
-    local_Y = getBiasedValue(local_Y, center_yaw, DEADZONE, MAX) * (-1.0f); // Invert Yaw-axis for correct direction
-    local_P = getBiasedValue(local_P, center_pitch, DEADZONE, MAX) * (-1.0f); // Invert Pitch-axis for correct direction
-    local_R = getBiasedValue(local_R, center_roll, DEADZONE, MAX);
+    // local_T = getBiasedValue(local_T, center_throttle, DEADZONE, MAX, 1.20f);
+    // local_Y = getBiasedValue(local_Y, center_yaw, DEADZONE, MAX, 2.5f) * (-1.0f); // Invert Yaw-axis for correct direction
+    local_P = getBiasedValue(local_P, center_pitch, DEADZONE, MAX, 2.0f) * (-1.0f); // Invert Pitch-axis for correct direction
+    local_R = getBiasedValue(local_R, center_roll, DEADZONE, MAX, 2.0f);
 
-    // convert it to cmd angles (0-30)
-    local_R = local_R * (30.0f / 100.0f);
-    local_P = local_P * (30.0f / 100.0f);
-    local_Y = local_Y * 1.80f;
+    // convert it to cmd angles (0-30 deg)
+    local_R = local_R * (3000.0f / 100.0f);
+    local_P = local_P * (3000.0f / 100.0f);
+    local_Y = local_Y * 0.90f; // need also to be scaled
 
     if (local_T < 0) local_T = 0.0f;
 
-    local_T = local_T * 70.0f / 100.0f; // 70% max throttle
+    // local_T = local_T * 70.0f / 100.0f; // 70% max throttle
+    local_T = local_T * 700.0f / 4095.0f; // 70% max throttle
+    if (local_T > 700.0f) local_T = 700.0f; 
 
     // update the shared data
     if (xSemaphoreTake(loadMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
-      // load_data[0] = (int16_t)(local_T * (100.0f / 4095.0f)); // Scale to 2 decimal places
-      load_data[0] = (int16_t)local_T; 
-      load_data[1] = (int16_t)local_Y; // Yaw
-      load_data[2] = (int16_t)local_P; // Pitch
-      load_data[3] = (int16_t)local_R; // Roll
+      // scale by RX requirements: (100 for P,R,andY), (10 for T)
+      load_data[0] = (int16_t)(local_T); // (0-1000) 
+      // load_data[1] = (int16_t)(local_Y * 100.0f); // Yaw: [-120.00, 120.00]
+      // load_data[2] = (int16_t)(local_P * 10.0f); // Pitch: [-30.00, 30.00]
+      load_data[3] = (int16_t)(local_R); // Roll: [-30.00, 30.00]
 
       load_data[4] = kill_motor_state ? 1 : 0; // Convert to int for kill state
       xSemaphoreGive(loadMutex);
     }
     // update the kill switch led indicator
-    digitalWrite(KILL_LED_PIN, kill_motor_state);
+    // digitalWrite(KILL_LED_PIN, kill_motor_state);
 
     // // printing for displaying gains
     // if (xSemaphoreTake(serialMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
     //   // Serial.print("T: "); Serial.println(local_T * (1000.0f/4095.0f)); // Print normalized value
     //   // Serial.print("R: "); Serial.println(local_R); // Print normalized value
-    //   // Serial.print(" , "); Serial.println(kill_motor_state);
-    //   // Serial.print(" , "); Serial.println(e_land_state);
-    //   // Serial.print(" , "); Serial.println(alt_hold_state);
-    //   // Serial.print(" , "); Serial.println(pid_mode_state);
+    //   Serial.print("kill ,           "); Serial.println(kill_motor_state);
+    //   Serial.print("eland ,          "); Serial.println(e_land_state);
+    //   Serial.print("alt hold ,       "); Serial.println(alt_hold_state);
+    //   Serial.print("pid ,            "); Serial.println(pid_mode_state);
     //   // Serial.print(" , "); Serial.println(left_switch_state);
     //   // Serial.print(" , "); Serial.println(right_switch_state);
     //   xSemaphoreGive(serialMutex);
     // }
+    if (kill_motor_state){
+      digitalWrite(KILL_LED_PIN, HIGH);
+    } else {
+      digitalWrite(KILL_LED_PIN, LOW);
+    }
 
     vTaskDelayUntil(&lastWakeTime, readInterval);
   }
@@ -184,7 +191,7 @@ void read_analog(void* parameters){
 
 void txTask(void* pvParams) {
   // period that works: 100ms, 50ms, 20ms, 10ms, 5ms, _
-  const TickType_t sendInterval = pdMS_TO_TICKS(5); // Send every 4ms (250 Hz) - to be tested
+  const TickType_t sendInterval = pdMS_TO_TICKS(4); // Send every 4ms (250 Hz) - to be tested
   TickType_t lastWakeTime = xTaskGetTickCount();
 
   vTaskDelay(pdMS_TO_TICKS(100));
@@ -192,8 +199,12 @@ void txTask(void* pvParams) {
 
   bool connected = false;
   // mode, kp, ki, kd, kill (scaled by 100)
-  // T, Y, P, R, Kill (1 = kill, 0 = not)
-  int16_t load_local[5] = {0, 0, 0, 0, 0}; // +- 300.00 max res, x100
+  // T, Y, P, R, Kill (1 = kill, 0 = not), Eland, sigma, gamma
+  float sigma = 0.001f;
+  float gamma = 500.0f;
+  int16_t sigma_ = (int16_t)(sigma * 1000.0f);
+  int16_t gamma_ = (int16_t)(gamma / 100.0f);
+  int16_t load_local[8] = {0, 0, 0, 0, 1, 0, sigma_, gamma_}; // +- 300.00 max res, x100
 
   uint16_t counter = 0;
 
@@ -203,11 +214,12 @@ void txTask(void* pvParams) {
   while (1) {
     // accessing the load data array
     if (xSemaphoreTake(loadMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
-      load_local[0] = load_data[0]; // Trottle for calibration
+      load_local[0] = load_data[0]; // Trottle 
       load_local[1] = load_data[1]; // Yaw
       load_local[2] = load_data[2]; // Pitch
       load_local[3] = load_data[3]; // Roll
-      // load_local[4] = load_data[4]; // Kill switch state
+      load_local[4] = load_data[4]; // Kill switch state
+      load_local[5] = load_data[5]; // elanding
       xSemaphoreGive(loadMutex);
     }
 
@@ -225,15 +237,24 @@ void txTask(void* pvParams) {
 
 
     while (radio.isAckPayloadAvailable()) {
-      int16_t telemetry[5];
+      int16_t telemetry[9]; // R,P,Y,alt,connection, P,kp,ki,kd
       radio.read(&telemetry, sizeof(telemetry));
 
-      if (xSemaphoreTake(serialMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
-        Serial.printf("[ACK] roll: %d, pitch: %d, yaw: %d, alt: %d, Connection: %d\n",
-                    telemetry[0], telemetry[1], telemetry[2],
-                    telemetry[3], telemetry[4]);
-        Serial.println(load_local[0]);
-        xSemaphoreGive(serialMutex);
+      // if (xSemaphoreTake(serialMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
+      //   Serial.printf("[ACK] roll: %d, pitch: %d, yaw: %d, alt: %d, Connection: %d\n",
+      //               telemetry[0], telemetry[1], telemetry[2],
+      //               telemetry[3], telemetry[4]);
+      //   Serial.println(load_local[0]);
+      //   xSemaphoreGive(serialMutex);
+      // }
+
+      // read data sent here
+      if (xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(1)) == pdTRUE){
+        // update global telemetry
+        for (int i = 0; i <= 8; i++){
+          telemetry_data[i] = (float)telemetry[i];
+        }
+        xSemaphoreGive(telemetryMutex);
       }
 
       connected = (bool) telemetry[4];
@@ -245,8 +266,11 @@ void txTask(void* pvParams) {
     if (counter >= 10){ // every 0.5 seconds
       counter = 0;
       // WDT_setSafe(connected); // update wdt
+      digitalWrite(RADIO_LED_PIN, LOW); // Update radio connection LED
       WDT_setSafe(true); // update wdt
     }
+
+    digitalWrite(RADIO_LED_PIN, connected);
 
     digitalWrite(LED_PIN, !digitalRead(LED_PIN));
     vTaskDelayUntil(&lastWakeTime, sendInterval);
@@ -286,6 +310,7 @@ void oledTask(void* Parameters){
   float heading = 0.0f;
   float alt = 0.0f;
   float connection = 0.0f;
+  float P, Kp, Ki, Kd;
 
   for (;;){
     // read mode (right SW)
@@ -294,11 +319,18 @@ void oledTask(void* Parameters){
     // read telemetry data
     if (local_mode){ // display telemetry
       if (xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
-        roll = (float)telemetry_data[0] / 100.0f;
-        pitch = (float)telemetry_data[1] / 100.0f;
-        heading = (float)telemetry_data[2] / 100.0f;
-        alt = (float)telemetry_data[3] / 100.0f;
+        roll = telemetry_data[0] / 100.0f;
+        pitch = telemetry_data[1] / 100.0f;
+        heading = telemetry_data[2] / 100.0f;
+        // alt = telemetry_data[3] / 100.0f;
+        alt = telemetry_data[3]; // bttery
+        connection = telemetry_data[4];
 
+        // temporary for analysis (roll only):
+        P = telemetry_data[5] / 100.0f;
+        Kp = telemetry_data[6] / 100.0f;
+        Ki = telemetry_data[7] / 100.0f;
+        Kd = telemetry_data[8] / 100.0f;
         xSemaphoreGive(telemetryMutex);
       }
 
@@ -317,6 +349,12 @@ void oledTask(void* Parameters){
         local_R = (float)load_data[3];
         xSemaphoreGive(loadMutex);
       }
+
+      // scale it back (for displaying purpose)
+      local_T = local_T / 10.0f; // (0-100) %
+      local_Y = local_Y / 100.0f; // Yaw: [-120.00, 120.00]
+      local_P = local_P / 100.0f; // Pitch: [-30.00, 30.00]
+      local_R = local_R / 100.0f; // Roll: [-30.00, 30.00]
 
       oled_displayCmd(local_T, local_Y, local_P, local_R);
     }

@@ -5,7 +5,7 @@
 
 #define LED_PIN 2
 
-// Joysticks
+// Joysticks (Arduino Joysticks: 3.3V)
 #define T_PIN 34 // Y
 #define Y_PIN 35 // X
 #define P_PIN 33 // Y
@@ -22,6 +22,7 @@
 // #define READ_ADC 33
 // #define SW_PIN 32
 #define KILL_LED_PIN 4
+#define RADIO_LED_PIN 16
 // for Flags
 
 // VSPI

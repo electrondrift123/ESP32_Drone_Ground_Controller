@@ -16,7 +16,7 @@ extern volatile bool pid_mode_state;
 extern volatile bool left_switch_state;
 extern volatile bool right_switch_state;
 
-extern int16_t load_data[5]; // Load data array
-extern int16_t telemetry_data[5]; // received telemetry data array
+extern int16_t load_data[8]; // Load data array
+extern float telemetry_data[9]; // received telemetry data array
 
 #endif
