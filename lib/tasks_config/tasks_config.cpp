@@ -80,45 +80,6 @@ bool freeRTOS_tasks_init(void){
   return true;
 }
 
-// void read_analog(void* parameters){
-//   const TickType_t readInterval = pdMS_TO_TICKS(4); // 250 Hz
-//   TickType_t lastWakeTime = xTaskGetTickCount();
-
-//   float local_T = 0.0f; // Example value, adjust as needed
-
-//   for (;;){
-//     // read the P-gain (one at a time)
-//     if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
-//       local_T = ((analogRead(READ_ADC))); // [0, 1]
-//       xSemaphoreGive(adcMutex);
-//     }
-
-//     // Potentio meter (temporary)
-//     local_T = local_T * (700.0f / 4095.0f);
-//     if (local_T > 700.0f) local_T = 700.0f; 
-//     else if (local_T < 0.0f) local_T = 0.0f;
-
-//     // update the shared data
-//     if (xSemaphoreTake(loadMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
-//       // load_data[0] = (int16_t)(local_T * (100.0f / 4095.0f)); // Scale to 2 decimal places
-//       load_data[0] = (int16_t)(local_T * (100.0f / 700.0f)); // Scale to 2 decimal places
-//       load_data[4] = kill_motor_state ? 1 : 0; // Convert to int for kill state
-//       xSemaphoreGive(loadMutex);
-//     }
-//     // update the kill switch led indicator
-//     digitalWrite(KILL_LED_PIN, kill_motor_state);
-
-//     // // printing for displaying gains
-//     // if (xSemaphoreTake(serialMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
-//     //   // Serial.print("T: "); Serial.println(local_T * (1000.0f/4095.0f)); // Print normalized value
-//     //   Serial.print("T: "); Serial.println(local_T); // Print normalized value
-//     //   xSemaphoreGive(serialMutex);
-//     // }
-
-//     vTaskDelayUntil(&lastWakeTime, readInterval);
-//   }
-// }
-
 void read_analog(void* parameters){
   const TickType_t readInterval = pdMS_TO_TICKS(4); // 250 Hz
   TickType_t lastWakeTime = xTaskGetTickCount();
@@ -129,6 +90,9 @@ void read_analog(void* parameters){
   float local_P = 0.0f;
   float local_R = 0.0f;
 
+  float dt = 0.004f; // 4 ms in seconds
+  static float current_throttle = 0.0f;
+
   for (;;){
     // local_T = ((analogRead(READ_ADC))); // [0, 1]
     local_T = safeAnalogRead(T_PIN); // Read throttle
@@ -136,29 +100,35 @@ void read_analog(void* parameters){
     local_P = safeAnalogRead(P_PIN); // Read P-axis
     local_R = safeAnalogRead(R_PIN); // Read R-axis
 
-    // ADC read 12 bit res
-    // local_T = getBiasedValue(local_T, center_throttle, DEADZONE, MAX, 1.20f);
-    // local_Y = getBiasedValue(local_Y, center_yaw, DEADZONE, MAX, 2.5f) * (-1.0f); // Invert Yaw-axis for correct direction
+    // ADC read 12 bit res: getBiasedValue output: [-100,100]
+    local_T = getBiasedValue(local_T, center_throttle, DEADZONE, MAX, 1.20f);
+    local_Y = getBiasedValue(local_Y, center_yaw, DEADZONE, MAX, 2.5f) * (-1.0f); // Invert Yaw-axis for correct direction
     local_P = getBiasedValue(local_P, center_pitch, DEADZONE, MAX, 2.0f) * (-1.0f); // Invert Pitch-axis for correct direction
     local_R = getBiasedValue(local_R, center_roll, DEADZONE, MAX, 2.0f);
 
     // convert it to cmd angles (0-30 deg)
     local_R = local_R * (3000.0f / 100.0f);
     local_P = local_P * (3000.0f / 100.0f);
-    local_Y = local_Y * 0.90f; // need also to be scaled
+    local_Y = local_Y * 0.90f; // need also to be scaled 
 
-    if (local_T < 0) local_T = 0.0f;
+  /////////////// put the throttle mech here ///////////////
+  float T_max = 1000.0f; // Max throttle value (scaled to 0-1000)
+  float rate = throttleRateControl(local_T / 100.0f); // [-1,1] Get rate control output based on throttle input
+  current_throttle += rate * dt;
 
-    // local_T = local_T * 70.0f / 100.0f; // 70% max throttle
-    local_T = local_T * 700.0f / 4095.0f; // 70% max throttle
-    if (local_T > 700.0f) local_T = 700.0f; 
+  // Clamp
+  if (current_throttle < 0) current_throttle = 0;
+  if (current_throttle > T_max) current_throttle = T_max;
+
+  local_T = current_throttle;  // update the throttle value to be sent
+  /////////////////////////////////////////////////////////
 
     // update the shared data
     if (xSemaphoreTake(loadMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
       // scale by RX requirements: (100 for P,R,andY), (10 for T)
       load_data[0] = (int16_t)(local_T); // (0-1000) 
-      // load_data[1] = (int16_t)(local_Y * 100.0f); // Yaw: [-120.00, 120.00]
-      // load_data[2] = (int16_t)(local_P * 10.0f); // Pitch: [-30.00, 30.00]
+      load_data[1] = (int16_t)(local_Y * 100.0f); // Yaw: [-120.00, 120.00]
+      load_data[2] = (int16_t)(local_P); // Pitch: [-30.00, 30.00]
       load_data[3] = (int16_t)(local_R); // Roll: [-30.00, 30.00]
 
       load_data[4] = kill_motor_state ? 1 : 0; // Convert to int for kill state
@@ -200,10 +170,11 @@ void txTask(void* pvParams) {
   bool connected = false;
   // mode, kp, ki, kd, kill (scaled by 100)
   // T, Y, P, R, Kill (1 = kill, 0 = not), Eland, sigma, gamma
-  float sigma = 0.001f;
-  float gamma = 500.0f;
+  float sigma = 0.01f;
+  float gamma = 100.0f;
   int16_t sigma_ = (int16_t)(sigma * 1000.0f);
-  int16_t gamma_ = (int16_t)(gamma / 100.0f);
+  // int16_t gamma_ = (int16_t)(gamma / 100.0f);
+  int16_t gamma_ = (int16_t)(gamma);
   int16_t load_local[8] = {0, 0, 0, 0, 1, 0, sigma_, gamma_}; // +- 300.00 max res, x100
 
   uint16_t counter = 0;
@@ -322,12 +293,12 @@ void oledTask(void* Parameters){
         roll = telemetry_data[0] / 100.0f;
         pitch = telemetry_data[1] / 100.0f;
         heading = telemetry_data[2] / 100.0f;
-        // alt = telemetry_data[3] / 100.0f;
-        alt = telemetry_data[3]; // bttery
+        alt = telemetry_data[3] / 100.0f;
         connection = telemetry_data[4];
 
         // temporary for analysis (roll only):
-        P = telemetry_data[5] / 100.0f;
+        // P = telemetry_data[5] / 100.0f;
+        P = (float)telemetry_data[5];
         Kp = telemetry_data[6] / 100.0f;
         Ki = telemetry_data[7] / 100.0f;
         Kd = telemetry_data[8] / 100.0f;
@@ -335,7 +306,7 @@ void oledTask(void* Parameters){
       }
 
       if (connection > 0.0f){
-        oled_displayTelemetry(roll, pitch, heading, alt);
+        oled_displayTelemetry(roll, pitch, heading, P);
       } else {
         oled_displayNoConnection();
       }
@@ -365,3 +336,7 @@ void oledTask(void* Parameters){
 
 // Problems to be solved:
 // 1. WDT keep resetting (temporarily fixed by always setting safe in txTask)
+
+
+// toDO:
+// - program the led combination signals for pid mode, e land, and alt hold!

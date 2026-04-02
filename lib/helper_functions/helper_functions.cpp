@@ -26,3 +26,21 @@ float getBiasedValue(float raw, float center, float deadzone, float max_value, f
 
   return biased * 100; // Scale to 0-100 range
 }
+
+float throttleRateControl(float throttle_input){
+  // stick_input: should be in range [-1, 1]
+  // Returns: throttle rate change (% per second, but scaled to your 0-1000 range)
+
+  float max_rate = 120.0f; // 120% throttle / second
+  float deadzone = 0.10f; // 10% throttle deadzone for rate control
+
+  if (fabs(throttle_input) < deadzone) return 0;
+
+  float rate_percent = throttle_input * max_rate; // Scale input to max rate
+
+  // Convert to your scale: 100% = 1000 units
+  // So 120%/sec = 1200 units/sec
+  float rate_units = rate_percent * 10.0f;  // because 100% = 1000 units
+  
+  return rate_units;
+}

@@ -5,7 +5,7 @@
 
 // initial joystick values (true center)
 extern float center_roll, center_pitch, center_yaw, center_throttle;
-#define DEADZONE 10.0f
+#define DEADZONE 410.0f
 #define MAX 4095.0f
 
 extern volatile bool SAFE_WDT;

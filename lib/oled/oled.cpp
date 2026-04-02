@@ -27,10 +27,10 @@ void oled_displayTelemetry(float roll, float pitch, float heading, float alt){
     display.setTextSize(2);
     display.setTextColor(SSD1306_WHITE);
     display.setCursor(0, 0);
-    display.print(F("R: ")); display.println(roll, 2);
-    display.print(F("P: ")); display.println(pitch, 2);
-    display.print(F("Y: ")); display.println(heading, 2);
-    display.print(F("h: ")); display.print(alt, 1); display.println(F(" m"));
+    display.print(F("R: ")); display.println(roll * 100, 2);
+    display.print(F("P: ")); display.println(pitch * 100, 2);
+    display.print(F("Y: ")); display.println(heading * 100, 2);
+    display.print(F("h: ")); display.print(alt, 2); display.println(F(" m"));
     display.display();
 }
 void oled_displayNoConnection(void){
