@@ -7,7 +7,13 @@ RF24 radio(NRF_CE_PIN, NRF_CSN_PIN);
 uint8_t address[][6] = { "1Node", "2Node" };
 
 bool main_tx_init(void){
-    // Setup radio
+  // Soft reset attempt
+  radio.powerDown();
+  delay(5);
+  radio.powerUp();
+  delay(5);
+
+  // Setup radio
   // SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
   if (!radio.begin()) {
     Serial.println("nRF24 not detected - but SPI works!");
@@ -31,8 +37,10 @@ bool main_tx_init(void){
   radio.setCRCLength(RF24_CRC_16);
   radio.enableDynamicPayloads();
   radio.enableAckPayload();
-  radio.setRetries(3, 5); // 3 retries, 5*250us delay
-  // radio.setRetries(2, 15); // 10 retries, 15*250us delay
+  radio.setRetries(5, 15); // 5 retries, 15*250us delay
+
+  radio.flush_tx();
+  radio.flush_rx();
 
   radio.openWritingPipe(address[0]); // Send to RX
   radio.stopListening(); // TX mode
