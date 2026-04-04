@@ -16,7 +16,7 @@ extern Adafruit_SSD1306 display;
 
 void oled_init(void);
 
-void oled_displayTelemetry(float roll, float pitch, float heading, float alt);
+void oled_displayTelemetry(float roll, float pitch, float heading, float alt, float Vb);
 void oled_displayNoConnection(void);
 void oled_displayCmd(float T, float Y, float P, float R);
 

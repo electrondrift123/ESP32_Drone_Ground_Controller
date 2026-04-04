@@ -112,21 +112,16 @@ void read_analog(void* parameters){
     local_Y = local_Y * 0.90f; // need also to be scaled 
 
   /////////////// put the throttle mech here ///////////////
-  float T_max = 1000.0f; // Max throttle value (scaled to 0-1000)
-  float rate = throttleRateControl(local_T / 100.0f); // [-1,1] Get rate control output based on throttle input
-  current_throttle += rate * dt;
+  float T_max = 80.0f; // max of 0.8m/s climb rate, scaled to 100 range
+  float rate = velocityZControl(local_T); // [-100,100]
 
-  // Clamp
-  if (current_throttle < 0) current_throttle = 0;
-  if (current_throttle > T_max) current_throttle = T_max;
-
-  local_T = current_throttle;  // update the throttle value to be sent
+  local_T = rate;  // update the throttle value to be sent
   /////////////////////////////////////////////////////////
 
     // update the shared data
     if (xSemaphoreTake(loadMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
       // scale by RX requirements: (100 for P,R,andY), (10 for T)
-      load_data[0] = (int16_t)(local_T); // (0-1000) 
+      load_data[0] = (int16_t)(local_T); // max  [-100, 100] 
       load_data[1] = (int16_t)(local_Y * 100.0f); // Yaw: [-120.00, 120.00]
       load_data[2] = (int16_t)(local_P); // Pitch: [-30.00, 30.00]
       load_data[3] = (int16_t)(local_R); // Roll: [-30.00, 30.00]
@@ -158,9 +153,98 @@ void read_analog(void* parameters){
     vTaskDelayUntil(&lastWakeTime, readInterval);
   }
 }
+// orig
+// void txTask(void* pvParams) {
+//   // period that works: 100ms, 50ms, 20ms, 10ms, 5ms, 4ms, _
+//   const TickType_t sendInterval = pdMS_TO_TICKS(4); // Send every 4ms (250 Hz) - to be tested
+//   TickType_t lastWakeTime = xTaskGetTickCount();
 
+//   vTaskDelay(pdMS_TO_TICKS(100));
+//   Serial.println("TX task start!");
+
+//   bool connected = false;
+//   // mode, kp, ki, kd, kill (scaled by 100)
+//   // T, Y, P, R, Kill (1 = kill, 0 = not), Eland, sigma, gamma
+//   float sigma = 0.01f;
+//   float gamma = 100.0f; // scaled by 10: true val = 100.0f
+//   int16_t sigma_ = (int16_t)(sigma * 1000.0f);
+//   int16_t gamma_ = (int16_t)(gamma);
+//   int16_t load_local[8] = {0, 0, 0, 0, 1, 0, sigma_, gamma_}; // +- 300.00 max res, x100
+
+//   uint16_t counter = 0;
+
+//   radio.flush_rx();
+//   radio.flush_tx();
+
+//   while (1) {
+//     // accessing the load data array
+//     if (xSemaphoreTake(loadMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
+//       load_local[0] = load_data[0]; // Trottle 
+//       load_local[1] = load_data[1]; // Yaw
+//       load_local[2] = load_data[2]; // Pitch
+//       load_local[3] = load_data[3]; // Roll
+//       load_local[4] = load_data[4]; // Kill switch state
+//       load_local[5] = load_data[5]; // elanding
+//       xSemaphoreGive(loadMutex);
+//     }
+
+//     bool ok = radio.writeFast(load_local, sizeof(load_local)); // original
+//     // bool ok = radio.write(load_local, sizeof(load_local));
+    
+//     if (!ok) {
+//       Serial.println("[TX] FIFO full or failed to write");
+//       radio.flush_tx(); // Clear if overflowed
+//     }
+//     else {
+//       bool sent = radio.txStandBy(100);  // this is the fix that ensures TX completes
+//       if (!sent) Serial.println("[TX] txStandBy TIMEOUT");
+//     }
+
+
+//     while (radio.isAckPayloadAvailable()) {
+//       int16_t telemetry[9]; // R,P,Y,alt,connection, P,kp,ki,kd
+//       radio.read(&telemetry, sizeof(telemetry));
+
+//       if (xSemaphoreTake(serialMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
+//         Serial.printf("[ACK] roll: %d, pitch: %d, yaw: %d, alt: %d, Connection: %d\n",
+//                     telemetry[0], telemetry[1], telemetry[2],
+//                     telemetry[3], telemetry[4]);
+//         Serial.println(load_local[0]);
+//         xSemaphoreGive(serialMutex);
+//       }
+
+//       // read data sent here
+//       if (xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(1)) == pdTRUE){
+//         // update global telemetry
+//         for (int i = 0; i <= 8; i++){
+//           telemetry_data[i] = (float)telemetry[i];
+//         }
+//         xSemaphoreGive(telemetryMutex);
+//       }
+
+//       connected = (bool) telemetry[4];
+//     }
+//     // else connected = false;
+
+//     counter++;
+
+//     if (counter >= 10){ // every 0.5 seconds
+//       counter = 0;
+//       // WDT_setSafe(connected); // update wdt
+//       digitalWrite(RADIO_LED_PIN, LOW); // Update radio connection LED
+//       WDT_setSafe(true); // update wdt
+//     }
+
+//     digitalWrite(RADIO_LED_PIN, connected);
+
+//     digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+//     vTaskDelayUntil(&lastWakeTime, sendInterval);
+//   }
+// }
+
+// dummy
 void txTask(void* pvParams) {
-  // period that works: 100ms, 50ms, 20ms, 10ms, 5ms, _
+  // period that works: 100ms, 50ms, 20ms, 10ms, 5ms, 4ms, _
   const TickType_t sendInterval = pdMS_TO_TICKS(4); // Send every 4ms (250 Hz) - to be tested
   TickType_t lastWakeTime = xTaskGetTickCount();
 
@@ -168,14 +252,7 @@ void txTask(void* pvParams) {
   Serial.println("TX task start!");
 
   bool connected = false;
-  // mode, kp, ki, kd, kill (scaled by 100)
-  // T, Y, P, R, Kill (1 = kill, 0 = not), Eland, sigma, gamma
-  float sigma = 0.01f;
-  float gamma = 100.0f;
-  int16_t sigma_ = (int16_t)(sigma * 1000.0f);
-  // int16_t gamma_ = (int16_t)(gamma / 100.0f);
-  int16_t gamma_ = (int16_t)(gamma);
-  int16_t load_local[8] = {0, 0, 0, 0, 1, 0, sigma_, gamma_}; // +- 300.00 max res, x100
+  int16_t load_local[5] = {10, 10, 10, 10, 20}; // +- 300.00 max res, x100
 
   uint16_t counter = 0;
 
@@ -183,19 +260,8 @@ void txTask(void* pvParams) {
   radio.flush_tx();
 
   while (1) {
-    // accessing the load data array
-    if (xSemaphoreTake(loadMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
-      load_local[0] = load_data[0]; // Trottle 
-      load_local[1] = load_data[1]; // Yaw
-      load_local[2] = load_data[2]; // Pitch
-      load_local[3] = load_data[3]; // Roll
-      load_local[4] = load_data[4]; // Kill switch state
-      load_local[5] = load_data[5]; // elanding
-      xSemaphoreGive(loadMutex);
-    }
 
-    bool ok = radio.writeFast(load_local, sizeof(load_local)); // works on 80ms, no txstandby
-    // bool ok = radio.write(load_local, sizeof(load_local));
+    bool ok = radio.writeFast(load_local, sizeof(load_local)); 
     
     if (!ok) {
       Serial.println("[TX] FIFO full or failed to write");
@@ -206,23 +272,23 @@ void txTask(void* pvParams) {
       if (!sent) Serial.println("[TX] txStandBy TIMEOUT");
     }
 
-
     while (radio.isAckPayloadAvailable()) {
-      int16_t telemetry[9]; // R,P,Y,alt,connection, P,kp,ki,kd
+      int16_t telemetry[5]; // R,P,Y,alt, connection
       radio.read(&telemetry, sizeof(telemetry));
 
-      // if (xSemaphoreTake(serialMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
-      //   Serial.printf("[ACK] roll: %d, pitch: %d, yaw: %d, alt: %d, Connection: %d\n",
-      //               telemetry[0], telemetry[1], telemetry[2],
-      //               telemetry[3], telemetry[4]);
-      //   Serial.println(load_local[0]);
-      //   xSemaphoreGive(serialMutex);
-      // }
+      if (xSemaphoreTake(serialMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
+        Serial.printf("[ACK] roll: %d, pitch: %d, yaw: %d, alt: %d, Connection: %d\n",
+                    telemetry[0], telemetry[1], telemetry[2],
+                    telemetry[3], telemetry[4]);
+        Serial.println(load_local[0]);
+        xSemaphoreGive(serialMutex);
+      }
+
 
       // read data sent here
       if (xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(1)) == pdTRUE){
         // update global telemetry
-        for (int i = 0; i <= 8; i++){
+        for (int i = 0; i <= 3; i++){
           telemetry_data[i] = (float)telemetry[i];
         }
         xSemaphoreGive(telemetryMutex);
@@ -298,7 +364,7 @@ void oledTask(void* Parameters){
 
         // temporary for analysis (roll only):
         // P = telemetry_data[5] / 100.0f;
-        P = (float)telemetry_data[5];
+        P = (float)telemetry_data[5] / 100.0f;
         Kp = telemetry_data[6] / 100.0f;
         Ki = telemetry_data[7] / 100.0f;
         Kd = telemetry_data[8] / 100.0f;
@@ -306,7 +372,7 @@ void oledTask(void* Parameters){
       }
 
       if (connection > 0.0f){
-        oled_displayTelemetry(roll, pitch, heading, P);
+        oled_displayTelemetry(roll, pitch, heading, alt, P);
       } else {
         oled_displayNoConnection();
       }
@@ -322,7 +388,7 @@ void oledTask(void* Parameters){
       }
 
       // scale it back (for displaying purpose)
-      local_T = local_T / 10.0f; // (0-100) %
+      local_T = local_T; // (0-100) %
       local_Y = local_Y / 100.0f; // Yaw: [-120.00, 120.00]
       local_P = local_P / 100.0f; // Pitch: [-30.00, 30.00]
       local_R = local_R / 100.0f; // Roll: [-30.00, 30.00]

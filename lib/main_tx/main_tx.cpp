@@ -26,12 +26,13 @@ bool main_tx_init(void){
   // --- RADIO SETTINGS TO MATCH RX ---
   radio.setPALevel(RF24_PA_HIGH);
   radio.setDataRate(RF24_250KBPS);
+  // radio.setDataRate(RF24_1MBPS);
   radio.setChannel(108);
   radio.setCRCLength(RF24_CRC_16);
   radio.enableDynamicPayloads();
   radio.enableAckPayload();
-  // radio.setRetries(3, 5); // 3 retries, 5*250us delay
-  radio.setRetries(10, 15); // 10 retries, 15*250us delay
+  radio.setRetries(3, 5); // 3 retries, 5*250us delay
+  // radio.setRetries(2, 15); // 10 retries, 15*250us delay
 
   radio.openWritingPipe(address[0]); // Send to RX
   radio.stopListening(); // TX mode

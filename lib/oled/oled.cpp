@@ -22,14 +22,15 @@ void oled_init(void){
   delay(1000);
 }
 
-void oled_displayTelemetry(float roll, float pitch, float heading, float alt){
+void oled_displayTelemetry(float roll, float pitch, float heading, float alt, float Vb){
     display.clearDisplay();
     display.setTextSize(2);
     display.setTextColor(SSD1306_WHITE);
     display.setCursor(0, 0);
     display.print(F("R: ")); display.println(roll * 100, 2);
     display.print(F("P: ")); display.println(pitch * 100, 2);
-    display.print(F("Y: ")); display.println(heading * 100, 2);
+    display.print(F("Vb: ")); display.print(Vb, 1); display.println(F(" V"));
+    // display.print(F("Y: ")); display.println(heading * 100, 2);
     display.print(F("h: ")); display.print(alt, 2); display.println(F(" m"));
     display.display();
 }
@@ -46,7 +47,7 @@ void oled_displayCmd(float T, float Y, float P, float R){
     display.setTextSize(2);
     display.setTextColor(SSD1306_WHITE);
     display.setCursor(0, 0);
-    display.print(F("T: ")); display.print(T, 0); display.println(F(" %"));
+    display.print(F("Vz:")); display.print(T, 0); display.println(F(" %"));
     display.print(F("Y: ")); display.println(Y, 2);
     display.print(F("P: ")); display.println(P, 2);
     display.print(F("R: ")); display.println(R, 2);

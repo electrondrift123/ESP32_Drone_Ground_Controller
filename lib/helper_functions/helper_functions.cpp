@@ -27,20 +27,15 @@ float getBiasedValue(float raw, float center, float deadzone, float max_value, f
   return biased * 100; // Scale to 0-100 range
 }
 
-float throttleRateControl(float throttle_input){
-  // stick_input: should be in range [-1, 1]
-  // Returns: throttle rate change (% per second, but scaled to your 0-1000 range)
+float velocityZControl(float throttle_input){
+  // stick_input: should be in range [-100, 100]
 
-  float max_rate = 120.0f; // 120% throttle / second
-  float deadzone = 0.10f; // 10% throttle deadzone for rate control
+  float max_rate = 80.0f; // max of [-0.8, 0.8] m/s climb and descent rate
+  float deadzone = 10.0f; // 10% throttle deadzone for rate control
 
   if (fabs(throttle_input) < deadzone) return 0;
 
-  float rate_percent = throttle_input * max_rate; // Scale input to max rate
-
-  // Convert to your scale: 100% = 1000 units
-  // So 120%/sec = 1200 units/sec
-  float rate_units = rate_percent * 10.0f;  // because 100% = 1000 units
+  float vz_cmd = throttle_input * max_rate / 100.0f; // Scale input to max rate 
   
-  return rate_units;
+  return vz_cmd; // Return the desired vertical velocity command [-80,80]
 }
