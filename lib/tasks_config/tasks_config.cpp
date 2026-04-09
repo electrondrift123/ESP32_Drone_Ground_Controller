@@ -107,24 +107,29 @@ void read_analog(void* parameters){
     local_R = getBiasedValue(local_R, center_roll, DEADZONE, MAX, 2.0f);
 
     // convert it to cmd angles (0-30 deg)
-    local_R = local_R * (3000.0f / 100.0f);
-    local_P = local_P * (3000.0f / 100.0f);
-    local_Y = local_Y * 0.90f; // need also to be scaled 
+    local_R = local_R * (2000.0f / 100.0f);
+    local_P = local_P * (2000.0f / 100.0f);
+    local_Y = local_Y * 1.80f; // need also to be scaled 
 
   /////////////// put the throttle mech here ///////////////
   float T_max = 80.0f; // max of 0.8m/s climb rate, scaled to 100 range
+  float T_min = -50.0f; // max of 0.5m/s descent rate, scaled to 100 range
   float rate = velocityZControl(local_T); // [-100,100]
 
   local_T = rate;  // update the throttle value to be sent
+
+  // constrain
+  if (local_T > T_max) local_T = T_max;
+  else if (local_T < T_min) local_T = T_min;
   /////////////////////////////////////////////////////////
 
     // update the shared data
     if (xSemaphoreTake(loadMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
       // scale by RX requirements: (100 for P,R,andY), (10 for T)
-      load_data[0] = (int16_t)(local_T); // max  [-100, 100] 
-      load_data[1] = (int16_t)(local_Y * 100.0f); // Yaw: [-120.00, 120.00]
-      load_data[2] = (int16_t)(local_P); // Pitch: [-30.00, 30.00]
-      load_data[3] = (int16_t)(local_R); // Roll: [-30.00, 30.00]
+      load_data[0] = (int16_t)(local_T); // max  [-50, 80] m/s // scaled by 100
+      load_data[1] = (int16_t)(local_Y); // Yaw: [-180.00, 180.00] deg/s // scaled by 1
+      load_data[2] = (int16_t)(local_P); // Pitch: [-2000.00, 2000.00] deg // scaled by 100
+      load_data[3] = (int16_t)(local_R); // Roll: [-2000.00, 2000.00] deg // scaled by 100
 
       load_data[4] = kill_motor_state ? 1 : 0; // Convert to int for kill state
       xSemaphoreGive(loadMutex);
@@ -240,9 +245,9 @@ void read_analog(void* parameters){
 //   }
 // }
 
-// new (works if RX is powered first)
+// new (works if RX is powered first - fragile, it breaks)
 void txTask(void* pvParams) {
-  const TickType_t sendInterval = pdMS_TO_TICKS(4); // 250 Hz
+  const TickType_t sendInterval = pdMS_TO_TICKS(5); // 250 Hz
   TickType_t lastWakeTime = xTaskGetTickCount();
   int16_t load_local[5] = {0, 0, 0, 0, 1}; // Vz, Y, P, R, kill
   uint16_t connection_counter = 0;
@@ -258,6 +263,9 @@ void txTask(void* pvParams) {
       xSemaphoreGive(loadMutex);
     }
 
+    // Add this line before writeFast
+    radio.clearStatusFlags();  // Clear any stuck MAX_RT flags
+
     // 2. Attempt to write to FIFO
     if (!radio.writeFast(load_local, sizeof(load_local))) {
       // If FIFO is full, something is wrong. Clear it.
@@ -266,6 +274,7 @@ void txTask(void* pvParams) {
       // 3. Wait for completion (with timeout)
       if (!radio.txStandBy(100)) { 
         // Transmission failed to reach receiver or get ACK
+        radio.clearStatusFlags(); // CRITICAL: Reset MAX_RT flag so it can try again
         radio.flush_tx(); // CRITICAL: Clear the failed packet so FIFO doesn't clog
         connected = false;
       } else {
@@ -283,25 +292,16 @@ void txTask(void* pvParams) {
       }
     }
 
-    // Update connection status and WDT every ~50ms
-    if (++connection_counter >= 15) { // 5*4ms = 20ms, adjust as needed
-      connection_counter = 0;
-      digitalWrite(RADIO_LED_PIN, connected);
-      WDT_setSafe(true); 
-
-      // Serial.println("nRF24 recovery - clearing stuck state");
-
-      // // 1. Clear all status flags (especially MAX_RT)
-      // radio.clearStatusFlags();     // clears RX_DR, TX_DS, MAX_RT
-
-      // // 2. Make sure we're in TX mode and clean buffers
-      // radio.stopListening();        // force TX mode
-      // radio.flush_tx();
-      // radio.flush_rx();
-
-      // // 3. Optional: re-apply key settings (harmless and often helps)
-      // radio.setRetries(5, 15);
-      // connected = false;
+    // Every ~60ms, if not connected, force a hardware state reset
+    if (++connection_counter >= 15) {
+        connection_counter = 0;
+        if (!connected) {
+            radio.stopListening();    // Ensure TX mode
+            radio.clearStatusFlags(); // Wipe any hardware error states
+            radio.flush_tx();         // Ensure FIFO is empty for next loop
+        }
+        digitalWrite(RADIO_LED_PIN, connected);
+        WDT_setSafe(true);
     }
 
     vTaskDelayUntil(&lastWakeTime, sendInterval);
@@ -427,7 +427,7 @@ void oledTask(void* Parameters){
         pitch = telemetry_data[1] / 100.0f;
         heading = telemetry_data[2] / 100.0f;
         alt = telemetry_data[3] / 100.0f;
-        Vb = telemetry_data[4];
+        Vb = telemetry_data[4] / 100.00f;
         connection = true; //temporary
         xSemaphoreGive(telemetryMutex);
       }
@@ -450,9 +450,9 @@ void oledTask(void* Parameters){
 
       // scale it back (for displaying purpose)
       local_T = local_T; // [-100, 100] %
-      local_Y = local_Y / 100.0f; // Yaw: [-120.00, 120.00]
-      local_P = local_P / 100.0f; // Pitch: [-30.00, 30.00]
-      local_R = local_R / 100.0f; // Roll: [-30.00, 30.00]
+      local_Y = local_Y; // Yaw: [-180.00, 180.00]
+      local_P = local_P / 100.0f; // Pitch: [-20.00, 20.00]
+      local_R = local_R / 100.0f; // Roll: [-20.00, 20.00]
 
       oled_displayCmd(local_T, local_Y, local_P, local_R);
     }

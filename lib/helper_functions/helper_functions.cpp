@@ -31,7 +31,7 @@ float velocityZControl(float throttle_input){
   // stick_input: should be in range [-100, 100]
 
   float max_rate = 80.0f; // max of [-0.8, 0.8] m/s climb and descent rate
-  float deadzone = 10.0f; // 10% throttle deadzone for rate control
+  float deadzone = 5.0f; // 5% throttle deadzone for rate control
 
   if (fabs(throttle_input) < deadzone) return 0;
 
