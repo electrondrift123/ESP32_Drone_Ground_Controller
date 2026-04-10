@@ -112,8 +112,8 @@ void read_analog(void* parameters){
     local_Y = local_Y * 1.80f; // need also to be scaled 
 
   /////////////// put the throttle mech here ///////////////
-  float T_max = 80.0f; // max of 0.8m/s climb rate, scaled to 100 range
-  float T_min = -50.0f; // max of 0.5m/s descent rate, scaled to 100 range
+  float T_max = 100.0f; // max of 0.8m/s climb rate, scaled to 100 range
+  float T_min = -80.0f; // max of 0.5m/s descent rate, scaled to 100 range
   float rate = velocityZControl(local_T); // [-100,100]
 
   local_T = rate;  // update the throttle value to be sent
@@ -126,7 +126,7 @@ void read_analog(void* parameters){
     // update the shared data
     if (xSemaphoreTake(loadMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
       // scale by RX requirements: (100 for P,R,andY), (10 for T)
-      load_data[0] = (int16_t)(local_T); // max  [-50, 80] m/s // scaled by 100
+      load_data[0] = (int16_t)(local_T); // max  [-80, 100] m/s // scaled by 100
       load_data[1] = (int16_t)(local_Y); // Yaw: [-180.00, 180.00] deg/s // scaled by 1
       load_data[2] = (int16_t)(local_P); // Pitch: [-2000.00, 2000.00] deg // scaled by 100
       load_data[3] = (int16_t)(local_R); // Roll: [-2000.00, 2000.00] deg // scaled by 100

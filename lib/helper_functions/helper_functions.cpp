@@ -30,12 +30,12 @@ float getBiasedValue(float raw, float center, float deadzone, float max_value, f
 float velocityZControl(float throttle_input){
   // stick_input: should be in range [-100, 100]
 
-  float max_rate = 80.0f; // max of [-0.8, 0.8] m/s climb and descent rate
+  float max_rate = 100.0f; // max of [-0.8, 1.0] m/s climb and descent rate
   float deadzone = 5.0f; // 5% throttle deadzone for rate control
 
   if (fabs(throttle_input) < deadzone) return 0;
 
   float vz_cmd = throttle_input * max_rate / 100.0f; // Scale input to max rate 
   
-  return vz_cmd; // Return the desired vertical velocity command [-80,80]
+  return vz_cmd; // Return the desired vertical velocity command [-80,100]
 }
