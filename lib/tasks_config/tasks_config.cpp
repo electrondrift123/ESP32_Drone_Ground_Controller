@@ -246,66 +246,125 @@ void read_analog(void* parameters){
 // }
 
 // new (works if RX is powered first - fragile, it breaks)
+// void txTask(void* pvParams) {
+//   const TickType_t sendInterval = pdMS_TO_TICKS(5); // 250 Hz
+//   TickType_t lastWakeTime = xTaskGetTickCount();
+//   int16_t load_local[5] = {0, 0, 0, 0, 1}; // Vz, Y, P, R, kill
+//   uint16_t connection_counter = 0;
+//   bool connected = false;
+
+//   vTaskDelay(pdMS_TO_TICKS(100));
+//   radio.flush_tx(); // Start with a clean slate
+
+//   for (;;) {
+//     // 1. Get fresh commands from global load_data
+//     if (xSemaphoreTake(loadMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
+//       for(int i=0; i<5; i++) load_local[i] = load_data[i];
+//       xSemaphoreGive(loadMutex);
+//     }
+
+//     // Add this line before writeFast
+//     radio.clearStatusFlags();  // Clear any stuck MAX_RT flags
+
+//     // 2. Attempt to write to FIFO
+//     if (!radio.writeFast(load_local, sizeof(load_local))) {
+//       // If FIFO is full, something is wrong. Clear it.
+//       radio.flush_tx();
+//     } else {
+//       // 3. Wait for completion (with timeout)
+//       if (!radio.txStandBy(100)) { 
+//         // Transmission failed to reach receiver or get ACK
+//         radio.clearStatusFlags(); // CRITICAL: Reset MAX_RT flag so it can try again
+//         radio.flush_tx(); // CRITICAL: Clear the failed packet so FIFO doesn't clog
+//         connected = false;
+//       } else {
+//         // 4. Handle incoming Telemetry (ACK Payload)
+//         while (radio.isAckPayloadAvailable()) {
+//           int16_t telemetry_rx[5];
+//           radio.read(&telemetry_rx, sizeof(telemetry_rx));
+//           connected = true;
+
+//           if (xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
+//             for (int i = 0; i < 5; i++) telemetry_data[i] = (float)telemetry_rx[i];
+//             xSemaphoreGive(telemetryMutex);
+//           }
+//         }
+//       }
+//     }
+
+//     // Every ~60ms, if not connected, force a hardware state reset
+//     if (++connection_counter >= 15) {
+//         connection_counter = 0;
+//         if (!connected) {
+//             radio.stopListening();    // Ensure TX mode
+//             radio.clearStatusFlags(); // Wipe any hardware error states
+//             radio.flush_tx();         // Ensure FIFO is empty for next loop
+//         }
+//         digitalWrite(RADIO_LED_PIN, connected);
+//         WDT_setSafe(true);
+//     }
+
+//     vTaskDelayUntil(&lastWakeTime, sendInterval);
+//   }
+// }
+
+// deepseek
 void txTask(void* pvParams) {
-  const TickType_t sendInterval = pdMS_TO_TICKS(5); // 250 Hz
-  TickType_t lastWakeTime = xTaskGetTickCount();
-  int16_t load_local[5] = {0, 0, 0, 0, 1}; // Vz, Y, P, R, kill
-  uint16_t connection_counter = 0;
-  bool connected = false;
+    const TickType_t sendInterval = pdMS_TO_TICKS(10); // 100Hz - RELIABLE
+    TickType_t lastWakeTime = xTaskGetTickCount();
+    int16_t load_local[5] = {0, 0, 0, 0, 1};
+    uint16_t connection_counter = 0;
+    bool connected = false;
 
-  vTaskDelay(pdMS_TO_TICKS(100));
-  radio.flush_tx(); // Start with a clean slate
+    vTaskDelay(pdMS_TO_TICKS(100));
+    radio.flush_tx();
 
-  for (;;) {
-    // 1. Get fresh commands from global load_data
-    if (xSemaphoreTake(loadMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
-      for(int i=0; i<5; i++) load_local[i] = load_data[i];
-      xSemaphoreGive(loadMutex);
-    }
-
-    // Add this line before writeFast
-    radio.clearStatusFlags();  // Clear any stuck MAX_RT flags
-
-    // 2. Attempt to write to FIFO
-    if (!radio.writeFast(load_local, sizeof(load_local))) {
-      // If FIFO is full, something is wrong. Clear it.
-      radio.flush_tx();
-    } else {
-      // 3. Wait for completion (with timeout)
-      if (!radio.txStandBy(100)) { 
-        // Transmission failed to reach receiver or get ACK
-        radio.clearStatusFlags(); // CRITICAL: Reset MAX_RT flag so it can try again
-        radio.flush_tx(); // CRITICAL: Clear the failed packet so FIFO doesn't clog
-        connected = false;
-      } else {
-        // 4. Handle incoming Telemetry (ACK Payload)
-        while (radio.isAckPayloadAvailable()) {
-          int16_t telemetry_rx[5];
-          radio.read(&telemetry_rx, sizeof(telemetry_rx));
-          connected = true;
-
-          if (xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
-            for (int i = 0; i < 5; i++) telemetry_data[i] = (float)telemetry_rx[i];
-            xSemaphoreGive(telemetryMutex);
-          }
+    for (;;) {
+        // Get fresh commands
+        if (xSemaphoreTake(loadMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
+            for(int i=0; i<5; i++) load_local[i] = load_data[i];
+            xSemaphoreGive(loadMutex);
         }
-      }
-    }
 
-    // Every ~60ms, if not connected, force a hardware state reset
-    if (++connection_counter >= 15) {
-        connection_counter = 0;
-        if (!connected) {
-            radio.stopListening();    // Ensure TX mode
-            radio.clearStatusFlags(); // Wipe any hardware error states
-            radio.flush_tx();         // Ensure FIFO is empty for next loop
+        // Simple write with built-in retry handling
+        bool report = radio.write(&load_local, sizeof(load_local));
+        
+        if (report) {
+            // Check for ACK payload (telemetry from RX)
+            if (radio.isAckPayloadAvailable()) {
+                int16_t telemetry_rx[5];
+                radio.read(&telemetry_rx, sizeof(telemetry_rx));
+                connected = true;
+                
+                if (xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
+                    for (int i = 0; i < 5; i++) 
+                        telemetry_data[i] = (float)telemetry_rx[i];
+                    xSemaphoreGive(telemetryMutex);
+                }
+            }
+        } else {
+            connected = false;
+            // Library already cleared MAX_RT and flushed on failure
         }
-        digitalWrite(RADIO_LED_PIN, connected);
-        WDT_setSafe(true);
-    }
 
-    vTaskDelayUntil(&lastWakeTime, sendInterval);
-  }
+        // Periodic connection check
+        if (++connection_counter >= 10) { // Every 100ms
+            connection_counter = 0;
+            if (!connected) {
+                // Soft reset without power cycle
+                radio.stopListening();
+                radio.flush_tx();
+                radio.flush_rx();
+                radio.startListening(); // Wait for next TX
+                vTaskDelay(pdMS_TO_TICKS(1));
+                radio.stopListening(); // Back to TX mode
+            }
+            digitalWrite(RADIO_LED_PIN, connected);
+            WDT_setSafe(true);
+        }
+
+        vTaskDelayUntil(&lastWakeTime, sendInterval);
+    }
 }
 
 // // dummy (works good!)
@@ -461,9 +520,5 @@ void oledTask(void* Parameters){
   }
 }
 
-// Problems to be solved:
-// 1. WDT keep resetting (temporarily fixed by always setting safe in txTask)
-
-
 // toDO:
-// - program the led combination signals for pid mode, e land, and alt hold!
+// - fix the radio connectivity issue

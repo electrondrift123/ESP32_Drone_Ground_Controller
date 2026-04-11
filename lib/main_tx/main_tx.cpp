@@ -78,7 +78,7 @@ bool main_tx_init(void){
     radio.setCRCLength(RF24_CRC_16);
     radio.enableDynamicPayloads();
     radio.enableAckPayload();
-    radio.setRetries(10, 15); // 10 retries, 15*250us delay
+    radio.setRetries(5, 15); // 5 retries, 15*250us delay
 
     radio.openWritingPipe(address[0]);
     radio.stopListening(); // TX mode
